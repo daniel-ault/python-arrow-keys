@@ -1,61 +1,21 @@
 #!/usr/bin/python
 
 import sys,tty,termios
+import os
+
+screen = [[' ']*200 for i in range(200)]
+
 class _Getch:
-    def __call__(self):
-            fd = sys.stdin.fileno()
-            old_settings = termios.tcgetattr(fd)
-            try:
-                tty.setraw(sys.stdin.fileno())
-                ch = sys.stdin.read(1)
-            finally:
-                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-            return ch
+	def __call__(self):
+		fd = sys.stdin.fileno()
+		old_settings = termios.tcgetattr(fd)
+		try:
+			tty.setraw(sys.stdin.fileno())
+			ch = sys.stdin.read(1)
+		finally:
+			termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+		return ch
 
-def read_single_keypress():
-    """Waits for a single keypress on stdin.
-
-    This is a silly function to call if you need to do it a lot because it has
-    to store stdin's current setup, setup stdin for reading single keystrokes
-    then read the single keystroke then revert stdin back after reading the
-    keystroke.
-
-    Returns the character of the key that was pressed (zero on
-    KeyboardInterrupt which can happen when a signal gets handled)
-
-    """
-    import termios, fcntl, sys, os
-    fd = sys.stdin.fileno()
-    # save old state
-    flags_save = fcntl.fcntl(fd, fcntl.F_GETFL)
-    attrs_save = termios.tcgetattr(fd)
-    # make raw - the way to do this comes from the termios(3) man page.
-    attrs = list(attrs_save) # copy the stored version to update
-    # iflag
-    attrs[0] &= ~(termios.IGNBRK | termios.BRKINT | termios.PARMRK 
-                  | termios.ISTRIP | termios.INLCR | termios. IGNCR 
-                  | termios.ICRNL | termios.IXON )
-    # oflag
-    attrs[1] &= ~termios.OPOST
-    # cflag
-    attrs[2] &= ~(termios.CSIZE | termios. PARENB)
-    attrs[2] |= termios.CS8
-    # lflag
-    attrs[3] &= ~(termios.ECHONL | termios.ECHO | termios.ICANON
-                  | termios.ISIG | termios.IEXTEN)
-    termios.tcsetattr(fd, termios.TCSANOW, attrs)
-    # turn off non-blocking
-    fcntl.fcntl(fd, fcntl.F_SETFL, flags_save & ~os.O_NONBLOCK)
-    # read a single keystroke
-    try:
-        ret = sys.stdin.read(1) # returns a single character
-    except KeyboardInterrupt: 
-        ret = 0
-    finally:
-        # restore old state
-        termios.tcsetattr(fd, termios.TCSAFLUSH, attrs_save)
-        fcntl.fcntl(fd, fcntl.F_SETFL, flags_save)
-    return ret
 
 def get():
 	inkey = _Getch()
@@ -75,13 +35,11 @@ def get():
         #else:
         #        print "not an arrow key!"
 
-def main():
+def get_key():
 	stack = []
 	while True:
 		key = get()
 		#print key
-		if key == 3:
-			break;
 		stack.append(key)
 		if len(stack) > 0:
 			if stack[0] == 27:
@@ -91,8 +49,72 @@ def main():
 							arrow = stack.pop()
 							stack.pop()
 							stack.pop()
-							print arrow_key_str(arrow) + " arrow key"
+							return arrow
+			else:
+				return key
 
+
+def init_screen():
+	rows, columns = os.popen('stty size', 'r').read().split()
+	rows = int(rows)
+	columns = int(columns)
+
+	screen = [[' ']*columns for i in range(rows)]
+
+	draw_screen()
+
+def draw_screen():
+	max_rows, max_columns = os.popen('stty size', 'r').read().split()
+	max_rows = int(max_rows)
+	max_columns = int(max_columns)
+	
+	for i in range(0, max_rows):
+		row = "".join(screen[i])
+		print_coord(i+1, 1, row)
+		print "\033[1;1H"
+
+
+def draw_cursor(prev_pos, cursor_pos):
+	screen[prev_pos[1]-1][prev_pos[0]-1] = '+'
+	print prev_pos
+	screen[cursor_pos[1]-1][cursor_pos[0]-1] = 'B'
+	#print screen
+	#draw_screen()
+
+def draw_coord(cursor_pos):
+	screen[60][40] = 'A'#str(cursor_pos[0])
+	screen[60][40] = 'B'#str(cursor_pos[1])
+	#print screen
+	#draw_screen()
+
+def main():
+	init_screen()
+
+	cursor_pos = [1, 1]
+	prev_pos = [1, 1]
+	
+	while True:
+		key = get_key()
+		if key == 3:
+			break
+		elif key>=65 and key<=68:
+			prev_pos = list(cursor_pos)
+			if key == 65: cursor_pos[1] = cursor_pos[1] - 1
+			elif key == 66: cursor_pos[1] = cursor_pos[1] + 1
+			elif key == 67: cursor_pos[0] = cursor_pos[0] + 1
+			elif key == 68: cursor_pos[0] = cursor_pos[0] - 1
+			draw_cursor(prev_pos, cursor_pos)		
+			draw_coord(cursor_pos)
+			draw_screen()
+		else:
+			#print "\033[" + str(cursor_pos[1]) + ";" + str(cursor_pos[1]) + "H"
+			print ""
+
+def print_coord(row, column, string):
+   print "\033[" + str(row) + ";" + str(column) + "H" + string
+
+def arrow_key_action(key):
+	return 0
 
 def arrow_key_str(arrow):
 	if arrow == 65:	return "up"
@@ -101,4 +123,8 @@ def arrow_key_str(arrow):
 	if arrow == 68:	return "left"
 
 if __name__=='__main__':
-  main()
+	main()
+
+
+
+
